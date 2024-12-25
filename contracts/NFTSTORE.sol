@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -12,55 +12,52 @@ contract NFTSTORE is ERC721URIStorage {
 
     struct NFTListing {
         uint256 tokenId;
-        address owner;
+        address payable owner;
         address payable seller;
         uint256 price;
     }
 
-    mapping(uint256 => NFTListing) private tokenIdToListing;
+    mapping (uint256 => NFTListing) private tokenIdToListing;
 
-    modifier onlyMarketplaceOwner() {
-        require(msg.sender == marketplaceOwner, "Only marketplace owner can call this function");
+    modifier onlyOwner {
+        require(msg.sender == marketplaceOwner, "Only owner can call this function");
         _;
     }
 
-    constructor() ERC721("NFTSTORE", "NFT") {
-        marketplaceOwner = payable(msg.sender); // the person who deploys the contract is the marketplace owner
+    constructor() ERC721("NFTSTORE", "NFTS"){
+        marketplaceOwner = payable(msg.sender);
     }
 
-    // update the listing fee percent
-    function updateListingFeePercent(uint256 _listingFeePercent) public onlyMarketplaceOwner {
+    function updateListingFeePercent(uint256 _listingFeePercent) public onlyOwner{
         listingFeePercent = _listingFeePercent;
     }
 
-    // get the listing fee percent
     function getListingFeePercent() public view returns (uint256) {
         return listingFeePercent;
     }
 
-    // get current token id
-    function getCurrentTokenId() public view returns (uint256) {
+    function getCurrentTokenId() public view returns(uint256) {
         return currentTokenId;
     }
 
-    // get NFT listing by token id
-    function getNFTListing(uint256 _tokenId) public view returns (NFTListing memory) {
+    function getNFTListing(uint256 _tokenId) public view returns(NFTListing memory){
         return tokenIdToListing[_tokenId];
     }
 
-    // create a token or selling an NFT
-    function createToken(string memory _tokenURI, uint256 _price) public returns (uint256) {
-        require(_price > 0, "Price must be greater than 0");
+    function createToken(string memory _tokenURI, uint256 _price) public returns(uint256){
+        require(_price > 0, "Price must be greater than zero");
+
         currentTokenId++;
-        
         uint256 newTokenId = currentTokenId;
-        _mint(msg.sender, newTokenId);
+        _safeMint(msg.sender, newTokenId);
         _setTokenURI(newTokenId, _tokenURI);
+
         _createNFTListing(newTokenId, _price);
+
         return newTokenId;
     }
 
-    function _createNFTListing(uint256 _tokenId, uint256 _price) private {
+    function _createNFTListing(uint256 _tokenId, uint256 _price) private{
         tokenIdToListing[_tokenId] = NFTListing({
             tokenId: _tokenId,
             owner: payable(msg.sender),
@@ -69,62 +66,59 @@ contract NFTSTORE is ERC721URIStorage {
         });
     }
 
-    // execute sale function
-    function executeSale(uint256 _tokenId) public payable {
-        NFTListing memory listing = tokenIdToListing[_tokenId];
-        require(msg.value >= listing.price, "Not enough ether sent");
-        require(msg.sender != listing.owner, "Owner cannot buy their own NFT");
-
+    function executeSale(uint256 tokenId) public payable{
+        NFTListing storage listing = tokenIdToListing[tokenId];
         uint256 price = listing.price;
         address payable seller = listing.seller;
+
+        require(msg.value == price, "Please submit the asking price to complete the purchase");
+
         listing.seller = payable(msg.sender);
         totalItemsSold++;
-        _transfer(listing.owner, msg.sender, _tokenId);
+
+        _transfer(listing.owner, msg.sender, tokenId);
 
         uint256 listingFee = (price * listingFeePercent) / 100;
         marketplaceOwner.transfer(listingFee);
         seller.transfer(msg.value - listingFee);
     }
 
-    // get all listed NFTs
-    function getAllListedNFTs() public view returns (NFTListing[] memory) {
-        // total nft count
+    function getAllListedNFTs() public view returns (NFTListing[] memory){
         uint256 totalNFTCount = currentTokenId;
         NFTListing[] memory listedNFTs = new NFTListing[](totalNFTCount);
         uint256 currentIndex = 0;
 
-        for(uint256 i = 0; i <= totalNFTCount; i++) {
-            uint tokenId = i+1;
-            NFTListing memory listing = tokenIdToListing[tokenId];
+        for(uint256 i = 0; i < totalNFTCount; i++){
+            uint256 tokenId = i + 1;
+            NFTListing storage listing = tokenIdToListing[tokenId];
             listedNFTs[currentIndex] = listing;
             currentIndex += 1;
         }
+
         return listedNFTs;
     }
 
-    // get my listed NFTs
-    function getMyListedNFTs() public view returns (NFTListing[] memory) {
-        // My NFT count
+    function getMyNFTs() public view returns(NFTListing[] memory) {
         uint256 totalNFTCount = currentTokenId;
-        uint myNFTCount = 0;
+        uint256 myNFTCount = 0;
         uint256 currentIndex = 0;
 
-        for(uint256 i = 0; i <= totalNFTCount; i++) {
-            if(tokenIdToListing[i+1].owner == msg.sender || tokenIdToListing[i+1].seller == msg.sender) {
+        for(uint256 i = 0; i < totalNFTCount; i++){
+            if(tokenIdToListing[i+1].owner == msg.sender || tokenIdToListing[i+1].seller == msg.sender){
                 myNFTCount++;
             }
         }
 
         NFTListing[] memory myNFTs = new NFTListing[](myNFTCount);
-        for(uint256 i = 0; i <= totalNFTCount; i++) {
-            if(tokenIdToListing[i+1].owner == msg.sender || tokenIdToListing[i+1].seller == msg.sender) {
-                uint tokenId = i+1;
+        for(uint256 i = 0; i < totalNFTCount; i++){
+            if(tokenIdToListing[i+1].owner == msg.sender || tokenIdToListing[i+1].seller == msg.sender){
+                uint256 tokenId = i + 1;
                 NFTListing storage listing = tokenIdToListing[tokenId];
                 myNFTs[currentIndex] = listing;
-                currentIndex += 1;
+                currentIndex++;
             }
         }
-        return myNFTs;
 
+        return myNFTs;
     }
 }
